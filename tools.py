@@ -17,11 +17,10 @@ def web_search(query):
     }
     response = requests.post(url, json=json_body, headers=headers)
 
-    search = ""
+    search = []
     for i, r in enumerate(response.json()['results']):
-        search += f"Result {i+1}:\nTitle: {r['title']}\nUrl: {r['url']}\n\n"
+        search.append(f"Result {i+1}:\nTitle: {r['title']}\nUrl: {r['url']}\n")
 
-    print(search)
     return search
 
 

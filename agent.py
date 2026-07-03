@@ -2,9 +2,11 @@ from openai import OpenAI
 import tomllib
 import os
 from dotenv import load_dotenv
-from prompt import Tools, Check_Final_Answer
+from prompt import build_system_prompt
 from tools import *
 import json
+import re
+
 
 # Load env variables
 load_dotenv()
@@ -21,74 +23,62 @@ client = OpenAI(
     api_key = os.getenv(model['api'])
 )
 
-user = "Who was bharat tiwari."
+user = "Compare NVIDIA, AMD, Intel"
 scratchpad = f"user: {user}\n\n"
 
 
-print(scratchpad)
-
-def select_tool(current_scratchpad):
+def react_agent(current_scratchpad):
 
     response = client.chat.completions.create(
         model=model['name'],
         messages=[
-            {"role":"system", "content": Tools},
+            {"role":"system", "content": build_system_prompt()},
             {"role":"user", "content": current_scratchpad}
-        ],
-        response_format={"type": "json_object"}
+        ]
     )
 
     print(response)
-    response = json.loads(response.choices[0].message.content)
-    current_scratchpad += f"Action: {response['tool']}\nAction Input: {response['parameters'][0]}\n"
-
-    return response['tool'], response['parameters']
-
-
-def use_tool(current_scratchpad):
-    actions = {
-        'web_search': web_search,
-        'fetch_page': fetch_page
-    }
-
-    # select function to call
-    tool_name, parameters = select_tool(scratchpad)
-    print(tool_name)
-    print(parameters)
     
-    # call function
-    tool_result = actions[tool_name](parameters[0])
-    current_scratchpad += f"Observations: {tool_result}"
+    for line in response.choices[0].message.content.split('\n'):
+
+        if line.startswith("Thought:"):
+            current_scratchpad = current_scratchpad + line + "\n"
+        elif line.startswith("Action:"):
+            tools = {
+                "web_search": web_search,
+                "fetch_page": fetch_page
+            }
+
+            tool_name = re.split(r'\s*Action:\s*|\s*\(\s*|\s*\)\s*', line)[1]
+            parameter = re.split(r'\s*Action:\s*|\s*\(\s*|\s*\)\s*', line)[2]
+
+            current_scratchpad = current_scratchpad + "Action: " + tool_name + "\nAction Input: " + parameter + "\n"
+            current_scratchpad = current_scratchpad + "Observations:" + str(tools[tool_name](parameter)) + "\n\n"
+
+    if response.choices[0].message.content.__contains__("Final Answer:"):
+        final_answer = response.choices[0].message.content.split("Final Answer: ")[1]
+        current_scratchpad = current_scratchpad + "Final Answer: " + final_answer + "\n\n"
+
+    return current_scratchpad, response.choices[0].message.content
+
+
+count = 1
+while count <= config["MAX_LOOP"]:
     
-    return current_scratchpad
+    scratchpad += f"TURN {count}\n"
 
+    if count == config["MAX_LOOP"]:
+        scratchpad += "You have reached the maximum number of research steps. \
+            You MUST now issue your Final Answer using what you have gathered \
+            so far.\n\n"
 
-def is_final_answer(current_scratchpad):
-        
-    response = client.chat.completions.create(
-        model=model['name'],
-        messages=[
-            {"role":"system", "content": Check_Final_Answer},
-            {"role":"user", "content": current_scratchpad}
-        ],
-        response_format={"type": "json_object"}
-    )
-    
-    response = json.loads(response.choices[0].message.content)
+    scratchpad, response = react_agent(scratchpad)
 
-    return response['Final'], response['next_topic']
+    count += 1
+    if response.__contains__("Final Answer:"):
+        break
 
+print(scratchpad)
 
-def reply(current_scratchpad):
-
-    current_scratchpad = use_tool(current_scratchpad)
-
-    is_relevent_info, next_topic = is_final_answer(current_scratchpad)
-    if is_relevent_info == "no":
-        current_scratchpad += f"Thought: I should dig deeper on title {next_topic} to find more information."
-
-
-    print(current_scratchpad)
-
-    return current_scratchpad
+   
 
