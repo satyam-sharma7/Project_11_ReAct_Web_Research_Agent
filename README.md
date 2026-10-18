@@ -13,14 +13,14 @@ flowchart TD
     A[User query] --> B[Scratchpad]
     B --> C[LLM call: system prompt + scratchpad]
     C --> D{Parse response line by line}
-    D -->|Thought:| E[Append thought to scratchpad]
-    D -->|Action: tool&#40;param&#41;| F[Run tool]
+    D -->|"Thought:"| E[Append thought to scratchpad]
+    D -->|"Action: tool call"| F[Run tool]
     F --> G[Append Observation to scratchpad]
-    D -->|Final Answer:| H[Append answer, stop]
+    D -->|"Final Answer:"| H[Append answer, stop]
     E --> I{Max loop reached?}
     G --> I
-    I -->|No| C
-    I -->|Yes: force final answer| C
+    I -->|"No"| C
+    I -->|"Yes: force final answer"| C
 ```
 
 1. The user query is written into a **scratchpad** (a growing text transcript).
